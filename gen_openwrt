@@ -209,7 +209,9 @@ unpack_armbian() {
     cp -r $common_root/* ${device_final}/$kernel/root
 
     tar xzf $device_path/$device/boot-$device.tar.gz -C ${device_final}/$kernel/boot
-    tar xzf $path/modules-*.tar.gz -C ${device_final}/$kernel/root
+    tar xzf $path/modules-*.tar.gz -C ${device_final}/$kernel/root/lib/modules
+    (cd $tmp/device/$device/$kernel/root/lib/modules/$kernel/ && rm -f build source *.ko 2>/dev/null && find ./ -type f -name '*.ko' -exec ln -s {} ./ \;)
+
     [ $(ls $device_path/$device/root | wc -l) = 0 ] || cp -r $device_path/$device/root/* ${device_final}/$kernel/root
     [ $(ls ./common/root | wc -l) = 0 ] || cp -r ./common/root/* ${device_final}/$kernel/root
 }
@@ -221,8 +223,8 @@ make_firmware() {
     fallocate -l $((16 + 128 + rootsize))M $image
 
     parted -s $image mklabel msdos
-    parted -s $image mkpart primary ext4 17M 151M
-    parted -s $image mkpart primary ext4 151M 100%
+    parted -s $image mkpart primary ext4 17M 256M
+    parted -s $image mkpart primary ext4 256M 100%
 
     do_losetup $image 1
 
@@ -238,8 +240,8 @@ make_firmware() {
 
     if [ $is_rockchip = true ]; then
         loader="./common/loader/rk3328.bin"
-    elif [ "$device" = "s905x3" ]; then
-        loader="./common/loader/s905x3.bin"
+    elif [ "$device" = "s905x" ]; then
+        loader="./common/loader/s905x.bin"
     elif [ "$device" = "vplus" ]; then
         loader="./common/loader/sunxi.bin"
         dd if=$loader of=$loop bs=1024 seek=8 conv=fsync 2>/dev/null
@@ -294,6 +296,62 @@ do_others() {
         printf 'pwm_meson' > $path/etc/modules.d/pwm-meson
         sed -i 's/ttyAMA0/ttyAML0/' $path/etc/inittab
         sed -i 's/ttyS0/tty0/' $path/etc/inittab
+
+        # Add USB and wireless network drivers
+    	echo "rtl8150" > $path/etc/modules.d/usb-net-rtl8150
+    	# USB RTL8152/8153/8156 network card Driver
+    	echo "r8152" > $path/etc/modules.d/usb-net-rtl8152
+    	# USB AX88179 network card Driver
+    	echo "ax88179_178a" > $path/etc/modules.d/usb-net-asix-ax88179
+    	# brcmfmac built-in wireless network card Driver
+    	echo "brcmfmac" > $path/etc/modules.d/brcmfmac
+    	echo "brcmutil" > $path/etc/modules.d/brcmutil
+    	# USB Realtek RTL8188EU Wireless LAN Driver
+    	echo "8188eu" > $path/etc/modules.d/8188eu
+    	# Realtek RTL8189FS Wireless LAN Driver
+    	echo "8189fs" > $path/etc/modules.d/8189fs
+   	# Realtek RTL8188FU Wireless LAN Driver
+   	echo "rtl8188fu" > $path/etc/modules.d/rtl8188fu
+  	# Realtek RTL8822CS Wireless LAN Driver
+    	echo "88x2bu" > $path/etc/modules.d/88x2bu
+    	echo "88x2cs" > $path/etc/modules.d/88x2cs
+    	echo "8192cu" > $path/etc/modules.d/8192cu
+    	echo "8192du" > $path/etc/modules.d/8192du
+    	echo "8192ee" > $path/etc/modules.d/8192ee
+    	echo "8192eu" > $path/etc/modules.d/8192eu
+    	echo "8192cu" > $path/etc/modules.d/8192fu
+    	echo "8812au" > $path/etc/modules.d/8812au
+    	echo "8814au" > $path/etc/modules.d/8814au
+    	echo "8821au" > $path/etc/modules.d/8821au
+    	echo "8821cu" > $path/etc/modules.d/8821cu
+    	echo "8188gu" > $path/etc/modules.d/8188gu
+    	# USB Ralink Wireless LAN Driver
+    	echo "rt2500usb" > $path/etc/modules.d/rt2500-usb
+    	echo "rt2800usb" > $path/etc/modules.d/rt2800-usb
+    	echo "rt2x00usb" > $path/etc/modules.d/rt2x00-usb
+    	# USB Mediatek Wireless LAN Driver
+    	echo "mt7601u" > $path/etc/modules.d/mt7601u
+    	echo "mt7663u" > $path/etc/modules.d/mt7663u
+    	echo "mt76x0u" > $path/etc/modules.d/mt76x0u
+    	echo "mt76x2u" > $path/etc/modules.d/mt76x2u
+    	# GPU Driver
+    	echo "panfrost" > $path/etc/modules.d/panfrost
+    	# PWM Driver
+    	echo "pwm_meson" > $path/etc/modules.d/pwm_meson
+    	# Ath10k Driver
+    	echo "ath10k_core" > $path/etc/modules.d/ath10k_core
+    	echo "ath10k_sdio" > $path/etc/modules.d/ath10k_sdio
+    	echo "ath10k_usb" > $path/etc/modules.d/ath10k_usb
+
+    	# Relink the kmod program
+    	[[ -x "sbin/kmod" ]] && (
+    	    kmod_list="depmod insmod lsmod modinfo modprobe rmmod"
+    	    for ki in ${kmod_list}; do
+    	        rm -f sbin/${ki} 2>/dev/null
+    	        ln -sf kmod sbin/${ki}
+    	    done
+    	)
+
     elif [ $is_rockchip = true ]; then
         sed -i 's/ttyAMA0/tty1/' $path/etc/inittab
         sed -i 's/ttyS0/ttyS2/' $path/etc/inittab
@@ -459,7 +517,7 @@ yellow="\033[33m"
 normal="\033[0m"
 
 allwinner="vplus"
-amlogic="phicomm-n1 s905x3"
+amlogic="s905x"
 rockchip="beikeyun l1pro"
 
 device_path="./device"
@@ -565,16 +623,16 @@ done
 [ "$kernel" ] || choose_kernel
 [ "$rootsize" ] || set_rootsize
 
-echo -e "${green}unpack openwrt${normal}"
-unpack_openwrt
-
 for kernel in ${kernels[*]}; do
     for device in ${devices[*]}; do
     {
+        echo -e "${green}unpack openwrt${normal}  =>  $firmware"  
+        unpack_openwrt
         echo -e "${green}unpack armbian${normal}  =>  $device @ $kernel"
         unpack_armbian
         echo -e "${green}make firmware${normal}\t=>  $device @ $kernel"
         make_firmware
+        echo -e "${green}Bootloader${normal}\t=>  $loader"
         echo -e "${green}done${normal}\t\t=>  $device @ $kernel"
     } &
     done
