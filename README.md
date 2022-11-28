@@ -100,4 +100,3 @@
 
 ## Thanks
 
-* flippy provides the kernel, armbian image
